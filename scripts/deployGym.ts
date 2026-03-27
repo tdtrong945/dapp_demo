@@ -3,27 +3,40 @@ import { ethers } from "hardhat";
 async function main() {
   console.log("🚀 Deploying GymMembership Contract...\n");
 
-  const [owner, admin1, admin2, admin3] = await ethers.getSigners();
+  const signers = await ethers.getSigners();
+  const owner = signers[0];
+
+  if (!owner) {
+    throw new Error("No deployer account found. Check PRIVATE_KEY in .env");
+  }
+
+  const envAdmins = (process.env.INITIAL_ADMINS || "")
+    .split(",")
+    .map((a) => a.trim())
+    .filter(Boolean);
+
+  const signerAdmins = signers.slice(1, 4).map((s) => s.address);
+  const initialAdmins = envAdmins.length > 0
+    ? envAdmins
+    : signerAdmins.length > 0
+      ? signerAdmins
+      : [owner.address];
 
   console.log(" Owner:", owner.address);
-  console.log(" Admin 1:", admin1.address);
-  console.log(" Admin 2:", admin2.address);
-  console.log(" Admin 3:", admin3.address);
+  initialAdmins.forEach((admin, idx) => {
+    console.log(` Admin ${idx + 1}:`, admin);
+  });
 
-  // Deploy contract
+  // Trien khai contract
   const GymMembership = await ethers.getContractFactory("GymMembership");
-  const gym = await GymMembership.deploy([
-    admin1.address,
-    admin2.address,
-    admin3.address,
-  ]);
+  const gym = await GymMembership.deploy(initialAdmins);
 
   await gym.waitForDeployment();
 
   const contractAddress = await gym.getAddress();
   console.log("\nContract deployed:", contractAddress);
 
-  // Lấy thông tin membership plan
+  // Lay thong tin goi membership
   console.log("\n Membership Plans:");
   const standardPlan = await gym.getMembershipPlan(0);
   const vipPlan = await gym.getMembershipPlan(1);
@@ -32,23 +45,23 @@ async function main() {
     "  STANDARD:",
     ethers.formatEther(standardPlan.price),
     "ETH /",
-    standardPlan.durationDays,
+    standardPlan.durationDays.toString(),
     "days",
   );
   console.log(
     "  VIP:     ",
     ethers.formatEther(vipPlan.price),
     "ETH /",
-    vipPlan.durationDays,
+    vipPlan.durationDays.toString(),
     "days",
   );
 
-  // Lưu deployment info
+  // Luu thong tin deploy
   const fs = require("fs");
   const deploymentInfo = {
     contractAddress,
     owner: owner.address,
-    admins: [admin1.address, admin2.address, admin3.address],
+    admins: initialAdmins,
     membershipPlans: {
       STANDARD: {
         price: ethers.formatEther(standardPlan.price) + " ETH",

@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.28;
 
+/**
+ * @title PrivateVoting
+ * @dev Smart contract for secure voting system
+ * - Public and private elections
+ * - Time-based voting windows
+ * - Whitelist for private elections
+ * - Single vote per person
+ */
 contract PrivateVoting {
     struct Election {
         uint256 id;

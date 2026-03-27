@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.28;
 
 /**
  * @title GymMembership
@@ -7,10 +7,14 @@ pragma solidity ^0.8.0;
  * - Quản lý membership (STANDARD, VIP)
  * - Thanh toán bằng Ether
  * - Tracking attendance (điểm danh)
- * - Admin: 3 người quản lý
+ * - Admin: linh hoạt (1-N người)
+ * - Safe fund transfer pattern
+ * - Reentrancy protection
+ * - Full event logging
  */
 
 contract GymMembership {
+    bool private locked;
     
     // ==================== STATE VARIABLES ====================
     
@@ -47,8 +51,9 @@ contract GymMembership {
     mapping(address => Member) public members;
     mapping(address => AttendanceRecord[]) public attendanceHistory;
     mapping(MembershipType => MembershipPlan) public membershipPlans;
+    mapping(address => bool) public adminList;
     
-    // Danh sách admin (3 người)
+    // Danh sách admin
     address[] public admins;
     address public owner;
     
@@ -56,19 +61,29 @@ contract GymMembership {
     uint256 public totalRevenue;
     
     // ==================== EVENTS ====================
-    event MemberRegistered(address indexed memberAddress, string name, MembershipType membershipType);
-    event PaymentReceived(address indexed memberAddress, uint256 amount, MembershipType membershipType);
-    event AttendanceRecorded(address indexed memberAddress, uint256 date, AttendanceStatus status);
-    event MembershipRenewed(address indexed memberAddress, MembershipType membershipType);
-    event AdminAdded(address indexed adminAddress);
-    event AdminRemoved(address indexed adminAddress);
-    event MembershipPlanUpdated(MembershipType membershipType, uint256 newPrice, uint256 newDuration);
-    event MemberDeactivated(address indexed memberAddress);
+    event MemberRegistered(address indexed memberAddress, string name, MembershipType indexed membershipType);
+    event MembershipRenewed(address indexed memberAddress, MembershipType indexed membershipType, uint256 newExpiryDate);
+    event PaymentReceived(address indexed memberAddress, uint256 amount, MembershipType indexed membershipType);
+    event AttendanceRecorded(address indexed memberAddress, uint256 indexed date, AttendanceStatus indexed status);
+    event MemberDeactivated(address indexed memberAddress, uint256 timestamp);
+    event MemberReactivated(address indexed memberAddress, uint256 timestamp);
+    event AdminAdded(address indexed adminAddress, uint256 timestamp);
+    event AdminRemoved(address indexed adminAddress, uint256 timestamp);
+    event MembershipPlanUpdated(MembershipType indexed membershipType, uint256 newPrice, uint256 newDuration, uint256 timestamp);
+    event RevenueWithdrawn(address indexed recipient, uint256 amount, uint256 timestamp);
+    event EmergencyWithdrawal(address indexed recipient, uint256 amount, uint256 timestamp);
     
     // ==================== MODIFIERS ====================
     
+    modifier reentrancyGuard() {
+        require(!locked, "No reentrancy allowed");
+        locked = true;
+        _;
+        locked = false;
+    }
+    
     modifier onlyAdmin() {
-        require(isAdmin(msg.sender), "Only admin can call this");
+        require(adminList[msg.sender], "Only admin can call this");
         _;
     }
     
@@ -87,16 +102,25 @@ contract GymMembership {
         _;
     }
     
+    modifier validAdminCount() {
+        require(admins.length > 0, "Must have at least 1 admin");
+        _;
+    }
+    
     // ==================== CONSTRUCTOR ====================
     
-    constructor(address[] memory _admins) {
-        require(_admins.length == 3, "Must have exactly 3 admins");
+    constructor(address[] memory _initialAdmins) {
+        require(_initialAdmins.length > 0, "Must have at least 1 admin");
         
         owner = msg.sender;
         
-        for (uint256 i = 0; i < 3; i++) {
-            require(_admins[i] != address(0), "Invalid admin address");
-            admins.push(_admins[i]);
+        // Thêm admin ban đầu
+        for (uint256 i = 0; i < _initialAdmins.length; i++) {
+            require(_initialAdmins[i] != address(0), "Invalid admin address");
+            require(!adminList[_initialAdmins[i]], "Duplicate admin");
+            
+            admins.push(_initialAdmins[i]);
+            adminList[_initialAdmins[i]] = true;
         }
         
         // Thiết lập giá mặc định
@@ -120,7 +144,7 @@ contract GymMembership {
      */
     function registerMember(string memory _name, uint8 _type) external payable {
         require(members[msg.sender].memberAddress == address(0), "Already registered");
-        require(bytes(_name).length > 0, "Name required");
+        require(bytes(_name).length > 0, "Name cannot be empty");
         require(_type <= 1, "Invalid membership type");
         
         MembershipType membershipType = MembershipType(_type);
@@ -172,7 +196,7 @@ contract GymMembership {
         
         totalRevenue += msg.value;
         
-        emit MembershipRenewed(_memberAddress, membershipType);
+        emit MembershipRenewed(_memberAddress, membershipType, member.expiryDate);
         emit PaymentReceived(_memberAddress, msg.value, membershipType);
     }
     
@@ -196,8 +220,22 @@ contract GymMembership {
         onlyAdmin 
         memberExists(_memberAddress) 
     {
+        require(members[_memberAddress].isActive, "Already deactivated");
         members[_memberAddress].isActive = false;
-        emit MemberDeactivated(_memberAddress);
+        emit MemberDeactivated(_memberAddress, block.timestamp);
+    }
+    
+    /**
+     * @dev Kích hoạt lại thành viên (chỉ Admin)
+     */
+    function reactivateMember(address _memberAddress) 
+        external 
+        onlyAdmin 
+        memberExists(_memberAddress) 
+    {
+        require(!members[_memberAddress].isActive, "Already active");
+        members[_memberAddress].isActive = true;
+        emit MemberReactivated(_memberAddress, block.timestamp);
     }
     
     /**
@@ -219,6 +257,18 @@ contract GymMembership {
         return members[_memberAddress].memberAddress != address(0);
     }
     
+    /**
+     * @dev Lấy thông tin gói membership
+     */
+    function getMembershipPlan(uint8 _type) 
+        external 
+        view 
+        returns (MembershipPlan memory) 
+    {
+        require(_type <= 1, "Invalid membership type");
+        return membershipPlans[MembershipType(_type)];
+    }
+    
     // ==================== ATTENDANCE FUNCTIONS ====================
     
     /**
@@ -232,7 +282,7 @@ contract GymMembership {
         memberExists(_memberAddress) 
         memberIsActive(_memberAddress) 
     {
-        require(_status <= 1, "Invalid status");
+        require(_status <= 1, "Invalid attendance status");
         require(isMembershipValid(_memberAddress), "Membership expired");
         
         AttendanceStatus status = AttendanceStatus(_status);
@@ -273,11 +323,14 @@ contract GymMembership {
         memberExists(_memberAddress) 
         returns (uint256) 
     {
+        require(_startDate <= _endDate, "Invalid date range");
+        
         uint256 count = 0;
         AttendanceRecord[] memory history = attendanceHistory[_memberAddress];
         
         for (uint256 i = 0; i < history.length; i++) {
-            if (history[i].date >= _startDate && history[i].date <= _endDate && 
+            if (history[i].date >= _startDate && 
+                history[i].date <= _endDate && 
                 history[i].status == AttendanceStatus.PRESENT) {
                 count++;
             }
@@ -286,9 +339,6 @@ contract GymMembership {
         return count;
     }
     
-    /**
-     * @dev Lấy tổng số lần tập
-     */
     function getTotalAttendance(address _memberAddress) 
         external 
         view 
@@ -298,7 +348,74 @@ contract GymMembership {
         return members[_memberAddress].totalAttendance;
     }
     
-    // ==================== MEMBERSHIP PLAN FUNCTIONS ====================
+    /**
+     * @dev Lấy tổng số bản ghi điểm danh
+     */
+    function getAttendanceHistoryLength(address _memberAddress)
+        external
+        view
+        memberExists(_memberAddress)
+        returns (uint256)
+    {
+        return attendanceHistory[_memberAddress].length;
+    }
+    
+    // ==================== ADMIN FUNCTIONS ====================
+    
+    /**
+     * @dev Kiểm tra xem địa chỉ có phải admin không
+     */
+    function isAdmin(address _addr) public view returns (bool) {
+        return adminList[_addr];
+    }
+    
+    /**
+     * @dev Lấy danh sách tất cả admin
+     */
+    function getAdmins() external view returns (address[] memory) {
+        return admins;
+    }
+    
+    /**
+     * @dev Lấy số lượng admin
+     */
+    function getAdminCount() external view returns (uint256) {
+        return admins.length;
+    }
+    
+    /**
+     * @dev Thêm admin mới (chỉ Owner)
+     */
+    function addAdmin(address _newAdmin) external onlyOwner {
+        require(_newAdmin != address(0), "Invalid admin address");
+        require(!adminList[_newAdmin], "Already admin");
+        
+        admins.push(_newAdmin);
+        adminList[_newAdmin] = true;
+        emit AdminAdded(_newAdmin, block.timestamp);
+    }
+    
+    /**
+     * @dev Xóa admin (chỉ Owner)
+     */
+    function removeAdmin(address _admin) external onlyOwner validAdminCount {
+        require(adminList[_admin], "Not admin");
+        require(admins.length > 1, "Cannot remove last admin");
+        require(_admin != owner, "Cannot remove owner as admin");
+        
+        adminList[_admin] = false;
+        
+        // Remove from array
+        for (uint256 i = 0; i < admins.length; i++) {
+            if (admins[i] == _admin) {
+                admins[i] = admins[admins.length - 1];
+                admins.pop();
+                break;
+            }
+        }
+        
+        emit AdminRemoved(_admin, block.timestamp);
+    }
     
     /**
      * @dev Cập nhật gói membership (chỉ Owner)
@@ -306,116 +423,99 @@ contract GymMembership {
      * @param _price Giá mới (Wei)
      * @param _durationDays Thời hạn mới (ngày)
      */
-    function updateMembershipPlan(uint8 _type, uint256 _price, uint256 _durationDays) 
-        external 
-        onlyOwner 
-    {
-        require(_type <= 1, "Invalid type");
-        require(_price > 0, "Price must > 0");
-        require(_durationDays > 0, "Duration must > 0");
+    function updateMembershipPlan(
+        uint8 _type,
+        uint256 _price,
+        uint256 _durationDays
+    ) external onlyOwner {
+        require(_type <= 1, "Invalid membership type");
+        require(_price > 0, "Price must be greater than 0");
+        require(_durationDays > 0, "Duration must be greater than 0");
         
         MembershipType membershipType = MembershipType(_type);
-        membershipPlans[membershipType].price = _price;
-        membershipPlans[membershipType].durationDays = _durationDays;
+        membershipPlans[membershipType] = MembershipPlan({
+            price: _price,
+            durationDays: _durationDays
+        });
         
-        emit MembershipPlanUpdated(membershipType, _price, _durationDays);
-    }
-    
-    /**
-     * @dev Lấy thông tin gói membership
-     */
-    function getMembershipPlan(uint8 _type) 
-        external 
-        view 
-        returns (MembershipPlan memory) 
-    {
-        require(_type <= 1, "Invalid type");
-        return membershipPlans[MembershipType(_type)];
-    }
-    
-    // ==================== ADMIN FUNCTIONS ====================
-    
-    /**
-     * @dev Kiểm tra admin
-     */
-    function isAdmin(address _address) public view returns (bool) {
-        for (uint256 i = 0; i < admins.length; i++) {
-            if (admins[i] == _address) {
-                return true;
-            }
-        }
-        return false;
-    }
-    
-    /**
-     * @dev Lấy danh sách admin
-     */
-    function getAdmins() external view returns (address[] memory) {
-        return admins;
-    }
-    
-    /**
-     * @dev Thêm admin (chỉ Owner)
-     */
-    function addAdmin(address _newAdmin) external onlyOwner {
-        require(_newAdmin != address(0), "Invalid address");
-        require(!isAdmin(_newAdmin), "Already admin");
-        
-        admins.push(_newAdmin);
-        emit AdminAdded(_newAdmin);
-    }
-    
-    /**
-     * @dev Xóa admin (chỉ Owner)
-     */
-    function removeAdmin(address _admin) external onlyOwner {
-        require(admins.length > 1, "Must keep at least 1 admin");
-        require(isAdmin(_admin), "Not admin");
-        
-        for (uint256 i = 0; i < admins.length; i++) {
-            if (admins[i] == _admin) {
-                admins[i] = admins[admins.length - 1];
-                admins.pop();
-                emit AdminRemoved(_admin);
-                break;
-            }
-        }
+        emit MembershipPlanUpdated(membershipType, _price, _durationDays, block.timestamp);
     }
     
     // ==================== FINANCIAL FUNCTIONS ====================
     
     /**
-     * @dev Rút tiền (chỉ Owner)
+     * @dev Rút tiền quỹ (chỉ Owner) - safe pattern with reentrancy guard
+     * @param _amount Số tiền rút (Wei)
      */
-    function withdraw(uint256 _amount) external onlyOwner {
-        require(_amount <= address(this).balance, "Insufficient balance");
+    function withdrawRevenue(uint256 _amount) external onlyOwner reentrancyGuard {
+        require(_amount > 0, "Amount must be greater than 0");
+        require(_amount <= address(this).balance, "Insufficient contract balance");
         
         (bool success, ) = owner.call{value: _amount}("");
-        require(success, "Transfer failed");
+        require(success, "Withdrawal failed");
+        
+        emit RevenueWithdrawn(owner, _amount, block.timestamp);
     }
     
     /**
-     * @dev Rút all tiền (chỉ Owner)
+     * @dev Rút toàn bộ quỹ (chỉ Owner) - safe pattern
      */
-    function withdrawAll() external onlyOwner {
+    function emergencyWithdraw() external onlyOwner reentrancyGuard {
         uint256 balance = address(this).balance;
-        require(balance > 0, "No balance");
+        require(balance > 0, "No funds to withdraw");
         
         (bool success, ) = owner.call{value: balance}("");
-        require(success, "Transfer failed");
+        require(success, "Emergency withdrawal failed");
+        
+        emit EmergencyWithdrawal(owner, balance, block.timestamp);
     }
     
     /**
-     * @dev Lấy số dư
+     * @dev Lấy số dư quỹ
      */
-    function getBalance() external view returns (uint256) {
+    function getContractBalance() external view returns (uint256) {
         return address(this).balance;
     }
     
     /**
-     * @dev Nhận Ether
+     * @dev Nhận Ether trực tiếp
      */
     receive() external payable {
         totalRevenue += msg.value;
+    }
+    
+    // ==================== VIEW FUNCTIONS ====================
+    
+    /**
+     * @dev Lấy tổng số member
+     */
+    function getTotalMembers() external view returns (uint256) {
+        return totalMembers;
+    }
+    
+    /**
+     * @dev Lấy tổng doanh thu
+     */
+    function getTotalRevenue() external view returns (uint256) {
+        return totalRevenue;
+    }
+    
+    /**
+     * @dev Lấy thông tin hđ contract
+     */
+    function getContractInfo() external view returns (
+        uint256 contractBalance,
+        uint256 activeMembersCount,
+        uint256 totalDailyAttendance,
+        address currentOwner,
+        uint256 adminCount
+    ) {
+        return (
+            address(this).balance,
+            totalMembers,
+            totalRevenue,
+            owner,
+            admins.length
+        );
     }
 }

@@ -1,35 +1,84 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-// Uncomment this line to use console.log
-// import "hardhat/console.sol";
-
-
+/**
+ * @title Lock
+ * @dev Time-lock contract for secure fund management
+ * - Lock funds until specified unlock time
+ * - Only owner can withdraw
+ * - Uses safe call pattern for fund transfers
+ */
 contract Lock {
-  uint public unlockTime;
-  address payable public owner;
+    uint256 public unlockTime;
+    address payable public owner;
+    bool private locked;
 
-  event Withdrawal(uint amount, uint when);
+    event Withdrawal(uint256 indexed amount, uint256 indexed when);
+    event UnlockTimeExtended(uint256 newUnlockTime);
 
-  constructor(uint _unlockTime) payable {
-    require(
-      block.timestamp < _unlockTime,
-      "Unlock time should be in the future"
-    );
+    modifier reentrancyGuard() {
+        require(!locked, "No reentrancy");
+        locked = true;
+        _;
+        locked = false;
+    }
 
-    unlockTime = _unlockTime;
-    owner = payable(msg.sender);
-  }
+    constructor(uint256 _unlockTime) payable {
+        require(
+            block.timestamp < _unlockTime,
+            "Unlock time should be in the future"
+        );
+        require(msg.value > 0, "Must send ETH to lock");
 
-  function withdraw() public {
-    // Uncomment this line, and the import of "hardhat/console.sol", to print a log in your terminal
-    // console.log("Unlock time is %o and block timestamp is %o", unlockTime, block.timestamp);
+        unlockTime = _unlockTime;
+        owner = payable(msg.sender);
+    }
 
-    require(block.timestamp >= unlockTime, "You can't withdraw yet");
-    require(msg.sender == owner, "You aren't the owner");
+    /**
+     * @dev Extend the unlock time (only owner)
+     */
+    function extendUnlockTime(uint256 _newUnlockTime) external {
+        require(msg.sender == owner, "Only owner can extend");
+        require(
+            _newUnlockTime > unlockTime,
+            "New time must be after current time"
+        );
+        unlockTime = _newUnlockTime;
+        emit UnlockTimeExtended(_newUnlockTime);
+    }
 
-    emit Withdrawal(address(this).balance, block.timestamp);
+    /**
+     * @dev Withdraw locked funds (safe pattern)
+     */
+    function withdraw() external reentrancyGuard {
+        require(block.timestamp >= unlockTime, "Unlock time not reached");
+        require(msg.sender == owner, "Only owner can withdraw");
 
-    owner.transfer(address(this).balance);
-  }
+        uint256 amount = address(this).balance;
+        require(amount > 0, "No funds to withdraw");
+
+        emit Withdrawal(amount, block.timestamp);
+
+        (bool success, ) = owner.call{value: amount}("");
+        require(success, "Withdrawal failed");
+    }
+
+    /**
+     * @dev Get current locked balance
+     */
+    function getBalance() external view returns (uint256) {
+        return address(this).balance;
+    }
+
+    /**
+     * @dev Get time remaining until unlock
+     */
+    function getTimeRemaining() external view returns (uint256) {
+        if (block.timestamp >= unlockTime) {
+            return 0;
+        }
+        return unlockTime - block.timestamp;
+    }
+
+    receive() external payable {}
 }

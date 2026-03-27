@@ -1,0 +1,18 @@
+{
+  "contractAddress": "0x340B9b0a998DBBcED033C44c4782Fbc3d279c292",
+  "owner": "0xC91DD3d721f7146e4DC759716b158546F2a4E551",
+  "admins": [
+    "0xC91DD3d721f7146e4DC759716b158546F2a4E551"
+  ],
+  "membershipPlans": {
+    "STANDARD": {
+      "price": "0.5 ETH",
+      "durationDays": "30"
+    },
+    "VIP": {
+      "price": "1.0 ETH",
+      "durationDays": "30"
+    }
+  },
+  "deployedAt": "2026-03-26T12:44:41.775Z"
+}

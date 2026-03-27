@@ -1,4 +1,38 @@
 import { ethers } from "ethers";
+import * as GymMembershipAbi from "../artifacts/contracts/GymMembership.sol/GymMembership.json";
+
+// ==================== WALLET CONNECTION ====================
+
+/**
+ * Hàm kết nối với MetaMask và trả về một instance của GymService
+ * @param contractAddress Địa chỉ của Smart Contract đã deploy
+ */
+export async function connectWallet(
+  contractAddress: string,
+): Promise<{ service: GymService; userAddress: string }> {
+  if (typeof (window as any).ethereum === "undefined") {
+    throw new Error("MetaMask không được tìm thấy. Vui lòng cài đặt MetaMask!");
+  }
+
+  // Yêu cầu người dùng kết nối ví
+  await (window as any).ethereum.request({ method: "eth_requestAccounts" });
+
+  // Khởi tạo Provider từ MetaMask
+  const provider = new ethers.BrowserProvider((window as any).ethereum);
+  const signer = await provider.getSigner();
+  const userAddress = await signer.getAddress();
+
+  // Khởi tạo interface của contract
+  const contract = new ethers.Contract(
+    contractAddress,
+    GymMembershipAbi.abi,
+    signer,
+  );
+
+  // Trả về service và địa chỉ người dùng
+  const service = new GymService(contractAddress, signer, contract);
+  return { service, userAddress };
+}
 
 // ==================== TYPES ====================
 
@@ -34,7 +68,7 @@ interface MembershipPlan {
 
 // ==================== GYM SERVICE ====================
 
-class GymService {
+export class GymService {
   private contractAddress: string;
   private contract: any;
   private signer: any;
@@ -64,7 +98,7 @@ class GymService {
       );
       return tx;
     } catch (error) {
-      console.error("❌ Register failed:", error);
+      console.error(". Register failed:", error);
       throw error;
     }
   }
@@ -84,11 +118,13 @@ class GymService {
       });
       await tx.wait();
       console.log(
-        `✅ Renewed membership for ${memberAddress} to ${newType === 0 ? "STANDARD" : "VIP"}`,
+        `✅ Renewed membership for ${memberAddress} to ${
+          newType === 0 ? "STANDARD" : "VIP"
+        }`,
       );
       return tx;
     } catch (error) {
-      console.error("❌ Renewal failed:", error);
+      console.error(" Renewal failed:", error);
       throw error;
     }
   }
@@ -101,11 +137,13 @@ class GymService {
       const tx = await this.contract.recordAttendance(memberAddress, status);
       await tx.wait();
       console.log(
-        `✅ Attendance recorded: ${memberAddress} (${status === 1 ? "PRESENT" : "ABSENT"})`,
+        `✅ Attendance recorded: ${memberAddress} (${
+          status === 1 ? "PRESENT" : "ABSENT"
+        })`,
       );
       return tx;
     } catch (error) {
-      console.error("❌ Attendance record failed:", error);
+      console.error(". Attendance record failed:", error);
       throw error;
     }
   }
@@ -126,7 +164,7 @@ class GymService {
         isActive: member.isActive,
       };
     } catch (error) {
-      console.error("❌ Get member failed:", error);
+      console.error(". Get member failed:", error);
       throw error;
     }
   }
@@ -138,7 +176,7 @@ class GymService {
     try {
       return await this.contract.isMembershipValid(memberAddress);
     } catch (error) {
-      console.error("❌ Check membership failed:", error);
+      console.error(". Check membership failed:", error);
       throw error;
     }
   }
@@ -156,7 +194,7 @@ class GymService {
         status: record.status,
       }));
     } catch (error) {
-      console.error("❌ Get attendance history failed:", error);
+      console.error(". Get attendance history failed:", error);
       throw error;
     }
   }
@@ -176,7 +214,7 @@ class GymService {
         endDate,
       );
     } catch (error) {
-      console.error("❌ Get attendance count failed:", error);
+      console.error(" Get attendance count failed:", error);
       throw error;
     }
   }
@@ -188,7 +226,7 @@ class GymService {
     try {
       return await this.contract.getTotalAttendance(memberAddress);
     } catch (error) {
-      console.error("❌ Get total attendance failed:", error);
+      console.error(". Get total attendance failed:", error);
       throw error;
     }
   }
@@ -203,7 +241,7 @@ class GymService {
       console.log(`✅ Deactivated member: ${memberAddress}`);
       return tx;
     } catch (error) {
-      console.error("❌ Deactivate failed:", error);
+      console.error(". Deactivate failed:", error);
       throw error;
     }
   }
@@ -225,11 +263,13 @@ class GymService {
       );
       await tx.wait();
       console.log(
-        `✅ Updated ${type === 0 ? "STANDARD" : "VIP"} plan: ${priceInEther} ETH / ${durationDays} days`,
+        `✅ Updated ${
+          type === 0 ? "STANDARD" : "VIP"
+        } plan: ${priceInEther} ETH / ${durationDays} days`,
       );
       return tx;
     } catch (error) {
-      console.error("❌ Update plan failed:", error);
+      console.error(". Update plan failed:", error);
       throw error;
     }
   }
@@ -245,7 +285,7 @@ class GymService {
         durationDays: plan.durationDays,
       };
     } catch (error) {
-      console.error("❌ Get plan failed:", error);
+      console.error(". Get plan failed:", error);
       throw error;
     }
   }
@@ -257,7 +297,7 @@ class GymService {
     try {
       return await this.contract.isAdmin(address);
     } catch (error) {
-      console.error("❌ Check admin failed:", error);
+      console.error(". Check admin failed:", error);
       throw error;
     }
   }
@@ -269,7 +309,7 @@ class GymService {
     try {
       return await this.contract.getAdmins();
     } catch (error) {
-      console.error("❌ Get admins failed:", error);
+      console.error(". Get admins failed:", error);
       throw error;
     }
   }
@@ -284,7 +324,7 @@ class GymService {
       console.log(`✅ Added admin: ${newAdmin}`);
       return tx;
     } catch (error) {
-      console.error("❌ Add admin failed:", error);
+      console.error(". Add admin failed:", error);
       throw error;
     }
   }
@@ -300,7 +340,7 @@ class GymService {
       console.log(`✅ Withdrawn ${amountInEther} ETH`);
       return tx;
     } catch (error) {
-      console.error("❌ Withdraw failed:", error);
+      console.error(". Withdraw failed:", error);
       throw error;
     }
   }
@@ -315,7 +355,7 @@ class GymService {
       console.log("✅ Withdrew all funds");
       return tx;
     } catch (error) {
-      console.error("❌ Withdraw all failed:", error);
+      console.error(". Withdraw all failed:", error);
       throw error;
     }
   }
@@ -328,7 +368,7 @@ class GymService {
       const balance = await this.contract.getBalance();
       return ethers.formatEther(balance);
     } catch (error) {
-      console.error("❌ Get balance failed:", error);
+      console.error(". Get balance failed:", error);
       throw error;
     }
   }
@@ -340,7 +380,7 @@ class GymService {
     try {
       return await this.contract.isMember(memberAddress);
     } catch (error) {
-      console.error("❌ Check member failed:", error);
+      console.error(". Check member failed:", error);
       throw error;
     }
   }

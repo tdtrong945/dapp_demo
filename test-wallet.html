@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kiểm tra kết nối ví MetaMask</title>
+    <!-- Nhúng thư viện ethers.js v6 trực tiếp từ CDN để chạy độc lập -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.11.1/ethers.umd.min.js"></script>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        text-align: center;
+        margin-top: 50px;
+        background-color: #f4f6f8;
+      }
+      .container {
+        background-color: white;
+        padding: 40px;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        display: inline-block;
+        max-width: 500px;
+        width: 100%;
+      }
+      button {
+        padding: 12px 24px;
+        font-size: 16px;
+        cursor: pointer;
+        background-color: #f6851b; /* Màu đặc trưng của MetaMask */
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-weight: bold;
+        transition: background-color 0.3s;
+      }
+      button:hover {
+        background-color: #e27618;
+      }
+      #status {
+        margin-top: 20px;
+        font-weight: bold;
+        font-size: 18px;
+        color: #333;
+      }
+      #addressInfo {
+        margin-top: 15px;
+        font-size: 16px;
+        color: #555;
+        word-wrap: break-word;
+      }
+      #errorInfo {
+        margin-top: 15px;
+        color: red;
+        font-size: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🦊 Test Kết Nối MetaMask</h1>
+      <p>Nhấn nút bên dưới để mở cửa sổ liên kết ví MetaMask.</p>
+
+      <button id="connectBtn">Kết nối Ví MetaMask</button>
+
+      <div id="status">Trạng thái: Chưa kết nối</div>
+      <div id="addressInfo"></div>
+      <div id="errorInfo"></div>
+    </div>
+
+    <script>
+      document
+        .getElementById("connectBtn")
+        .addEventListener("click", async () => {
+          const statusEl = document.getElementById("status");
+          const addressInfoEl = document.getElementById("addressInfo");
+          const errorInfoEl = document.getElementById("errorInfo");
+
+          // Reset thông báo
+          errorInfoEl.innerText = "";
+          addressInfoEl.innerHTML = "";
+
+          // Kiểm tra xem trình duyệt có extension cài đặt ví chưa (VD: MetaMask)
+          if (typeof window.ethereum === "undefined") {
+            statusEl.innerText = "Trạng thái: ❌ Không tìm thấy ví!";
+            errorInfoEl.innerText =
+              "Trình duyệt của bạn chưa cài đặt MetaMask. Vui lòng cài đặt extension MetaMask.";
+            return;
+          }
+
+          try {
+            statusEl.innerText = "Trạng thái: Đang kết nối...";
+
+            // Mở popup yêu cầu người dùng kết nối (chính là logic window.ethereum.request bên file index.ts)
+            await window.ethereum.request({ method: "eth_requestAccounts" });
+
+            // Khởi tạo Provider qua thư viện Ethers mà chúng ta vừa import từ CDN
+            const provider = new ethers.BrowserProvider(window.ethereum);
+            const signer = await provider.getSigner();
+
+            // Lấy thông tin ví
+            const userAddress = await signer.getAddress();
+            const network = await provider.getNetwork();
+            const balanceWei = await provider.getBalance(userAddress);
+            const balanceEth = ethers.formatEther(balanceWei); // Chuyển sang giá trị ETH để dễ đọc
+
+            // Hiển thị ra màn hình
+            statusEl.innerText = "Trạng thái: ✅ Kết nối thành công!";
+            statusEl.style.color = "green";
+
+            addressInfoEl.innerHTML = `
+                    <p><b>Địa chỉ ví:</b> <br> ${userAddress}</p>
+                    <p><b>Số dư:</b> <br> ${balanceEth} ${
+              network.name !== "unknown" ? network.name : "ETH/Token"
+            }</p>
+                    <p><b>Chain ID:</b> ${network.chainId}</p>
+                `;
+          } catch (error) {
+            console.error("Lỗi khi kết nối:", error);
+            statusEl.innerText = "Trạng thái: ❌ Kết nối thất bại!";
+            statusEl.style.color = "red";
+
+            if (error.code === 4001) {
+              errorInfoEl.innerText =
+                "Bạn vừa từ chối yêu cầu kết nối trên MetaMask.";
+            } else {
+              errorInfoEl.innerText = "Lỗi: " + error.message;
+            }
+          }
+        });
+    </script>
+  </body>
+</html>
