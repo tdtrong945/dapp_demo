@@ -1,20 +1,20 @@
-# Gym Backend Services Guide
+# Hướng Dẫn Dịch Vụ Backend Gym
 
-This guide covers the backend services for the Gym Web3 dApp. These services handle gym member management, event synchronization, and payment verification.
+Hướng dẫn này bao gồm các dịch vụ backend cho ứng dụng Web3 Gym. Những dịch vụ này xử lý quản lý hội viên, đồng bộ hóa sự kiện, và xác minh thanh toán.
 
-## Overview
+## Tổng Quan
 
-The backend consists of 3 main services:
+Backend bao gồm 3 dịch vụ chính:
 
-1. **Event Sync Service** (`syncGymEvents.ts`) - Listens to contract events and syncs to database
-2. **Member Service** (`gymMemberService.ts`) - CRUD operations for gym members
-3. **Payment Service** (`paymentVerificationService.ts`) - Payment tracking and verification
+1. **Dịch Vụ Đồng Bộ Sự Kiện** (`syncGymEvents.ts`) - Lắng nghe sự kiện của hợp đồng và đồng bộ vào cơ sở dữ liệu
+2. **Dịch Vụ Thành Viên** (`gymMemberService.ts`) - Các hoạt động CRUD cho hội viên gym
+3. **Dịch Vụ Thanh Toán** (`paymentVerificationService.ts`) - Theo dõi và xác minh thanh toán
 
-## Setup
+## Cài Đặt
 
-### Environment Variables
+### Biến Môi Trường
 
-Create a `.env` file in the project root:
+Tạo file `.env` trong thư mục gốc dự án:
 
 ```bash
 # Supabase
@@ -22,288 +22,290 @@ SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
 
 # Blockchain
-RPC_URL=http://localhost:8545              # Or Sapphire testnet RPC
-PRIVATE_KEY=your_private_key_here          # For transactions (if needed)
-CONTRACT_ADDRESS=0x...                     # GymMembership contract address
+RPC_URL=http://localhost:8545              # Hoặc RPC của Sapphire testnet
+PRIVATE_KEY=your_private_key_here          # Cho các giao dịch (nếu cần)
+CONTRACT_ADDRESS=0x...                     # Địa chỉ hợp đồng GymMembership
 
-# API Server (optional)
+# API Server (tùy chọn)
 API_PORT=3001
-SYNC_EVENTS=true                           # Auto-start event listener
+SYNC_EVENTS=true                           # Tự động khởi động event listener
 ```
 
-### Installation
+### Cài Đặt Phụ Thuộc
 
 ```bash
-# Install dependencies
+# Cài đặt các phụ thuộc
 npm install
 
-# Create .env file
+# Tạo file .env
 cp .env.example .env
 
-# Run database migrations (if needed)
+# Chạy migrations cơ sở dữ liệu (nếu cần)
 npm run db:init
 ```
 
-## Service 1: Event Sync Service
+## Dịch Vụ 1: Dịch Vụ Đồng Bộ Sự Kiện
 
-### Purpose
+### Mục Đích
 
-Listens to `GymMembership` contract events and automatically syncs them to Supabase. This keeps the database synchronized with on-chain state.
+Lắng nghe các sự kiện hợp đồng `GymMembership` và tự động đồng bộ chúng vào Supabase. Điều này giữ cho cơ sở dữ liệu được đồng bộ với trạng thái on-chain.
 
-### Supported Events
+### Các Sự Kiện Được Hỗ Trợ
 
-| Event | Action | Database Update |
-|-------|--------|-----------------|
-| `MemberRegistered` | New member signs up | Insert into `gym_member_profiles`, record payment |
-| `MembershipRenewed` | Member renews membership | Update `gym_member_profiles`, update expiry date |
-| `AttendanceRecorded` | Admin records attendance | Insert into `gym_attendance_records` |
-| `AdminAdded` | New admin assigned | Assign `admin` role to user |
-| `PaymentReceived` | Payment processed | Record in `gym_payment_transactions` |
-| `RevenueWithdrawn` | Owner withdraws funds | Log withdrawal event |
+| Sự Kiện              | Hành Động                   | Cập Nhật Cơ Sở Dữ Liệu                                      |
+| -------------------- | --------------------------- | ----------------------------------------------------------- |
+| `MemberRegistered`   | Hội viên mới đăng ký        | Chèn vào `gym_member_profiles`, ghi lại thanh toán          |
+| `MembershipRenewed`  | Hội viên gia hạn thành viên | Cập nhật `gym_member_profiles`, cập nhật ngày hết hạn      |
+| `AttendanceRecorded` | Admin ghi lại điểm danh     | Chèn vào `gym_attendance_records`                           |
+| `AdminAdded`         | Gán admin mới               | Gán vai trò `admin` cho người dùng                          |
+| `PaymentReceived`    | Thanh toán được xử lý       | Ghi lại trong `gym_payment_transactions`                    |
+| `RevenueWithdrawn`   | Chủ sở hữu rút tiền         | Ghi sự kiện rút tiền                                        |
 
-### Starting the Event Listener
+### Khởi Động Event Listener
 
 ```bash
-# Terminal 1: Start the listener (continuously monitors events)
+# Terminal 1: Khởi động listener (liên tục giám sát sự kiện)
 npm run sync:gym-events
 
-# Output:
+# Đầu ra:
 # 🔍 Listening to GymMembership events at 0x...
 # ✅ Event listeners registered. Waiting for events...
 ```
 
-The listener will stay active and sync events in real-time as they occur on the blockchain.
+Listener sẽ giữ hoạt động và đồng bộ sự kiện theo thời gian thực khi chúng xảy ra trên blockchain.
 
-### Event Sync Example
+### Ví Dụ Đồng Bộ Sự Kiện
 
-When a user calls `registerMember(name, type)` on the contract:
+Khi người dùng gọi `registerMember(name, type)` trên hợp đồng:
 
 ```
 Contract Event → syncGymEvents → Database
 MemberRegistered(address, name, type, date) →
-  1. Create/update app_users record
-  2. Insert gym_member_profiles (membership_type, expiry_date)
-  3. Record gym_payment_transactions
+  1. Tạo/cập nhật bản ghi app_users
+  2. Chèn gym_member_profiles (membership_type, expiry_date)
+  3. Ghi lại gym_payment_transactions
 ```
 
-## Service 2: Member Service
+## Dịch Vụ 2: Dịch Vụ Thành Viên
 
-### Purpose
+### Mục Đích
 
-Provides CRUD operations for managing gym members off-chain (name, email, soft-delete). On-chain data (membership type, expiry) is controlled by the smart contract.
+Cung cấp các hoạt động CRUD để quản lý hội viên gym ngoài chuỗi (tên, email, xóa mềm). Dữ liệu on-chain (loại thành viên, ngày hết hạn) được kiểm soát bởi hợp đồng thông minh.
 
-### Key Methods
+### Các Phương Thức Chính
 
-#### Get Member Profile
+#### Lấy Hồ Sơ Hội Viên
 
 ```bash
 npm run member:get <wallet_address>
 ```
 
-Returns full member profile including membership status and statistics.
+Trả lại hồ sơ hội viên đầy đủ bao gồm trạng thái thành viên và thống kê.
 
 ```typescript
-// Programmatic usage
-import { gymMemberService } from '../services/gymBackendServices';
+// Sử dụng lập trình
+import { gymMemberService } from "../services/gymBackendServices";
 
-const profile = await gymMemberService.getMemberProfile('0x123...');
-// Returns: {
+const profile = await gymMemberService.getMemberProfile("0x123...");
+// Trả lại: {
 //   wallet_address, display_name, email, membership_type,
 //   registration_date, expiry_date, total_attendance, is_active,
 //   status, updated_at
 // }
 ```
 
-#### List All Members
+#### Liệt Kê Tất Cả Hội Viên
 
 ```bash
 npm run member:list
 ```
 
-#### Get Member Attendance
+#### Lấy Lịch Sử Điểm Danh
 
 ```bash
 npm run member:attendance <wallet_address>
 ```
 
-Returns attendance records (date, status, tx_hash).
+Trả lại bản ghi điểm danh (ngày, trạng thái, tx_hash).
 
-#### Get Member Payments
+#### Lấy Lịch Sử Thanh Toán
 
 ```bash
 npm run member:payments <wallet_address>
 ```
 
-Returns payment history for the member.
+Trả lại lịch sử thanh toán của hội viên.
 
-#### Update Member Profile
+#### Cập Nhật Hồ Sơ Hội Viên
 
 ```typescript
-await gymMemberService.updateMemberProfile('0x123...', {
-  display_name: 'John Doe',
-  email: 'john@example.com'
+await gymMemberService.updateMemberProfile("0x123...", {
+  display_name: "John Doe",
+  email: "john@example.com",
 });
 
-// WARNING: This only updates off-chain data (name, email)
-// On-chain data (membership type, expiry) can only be updated via contract
+// CẢNH BÁO: Chỉ cập nhật dữ liệu ngoài chuỗi (tên, email)
+// Dữ liệu on-chain (loại thành viên, ngày hết hạn) chỉ có thể được cập nhật qua hợp đồng
 ```
 
-#### Check Membership Expiration
+#### Kiểm Tra Ngày Hết Hạn Thành Viên
 
 ```typescript
-const isExpired = await gymMemberService.isMembershipExpired('0x123...');
-// Returns: boolean
+const isExpired = await gymMemberService.isMembershipExpired("0x123...");
+// Trả lại: boolean
 ```
 
-#### Soft-Delete Member
+#### Xóa Mềm Hội Viên
 
 ```typescript
-await gymMemberService.softDeleteMember('0x123...');
-// Marks member as inactive but does NOT delete data
+await gymMemberService.softDeleteMember("0x123...");
+// Đánh dấu hội viên là không hoạt động nhưng KHÔNG xóa dữ liệu
 ```
 
-#### Ban Member
+#### Cấm Hội Viên
 
 ```typescript
-await gymMemberService.banMember('0x123...', 'Unpaid fees');
-// Changes status to 'banned'
+await gymMemberService.banMember("0x123...", "Chưa thanh toán phí");
+// Thay đổi trạng thái thành 'banned'
 ```
 
-## Service 3: Payment Verification Service
+## Dịch Vụ 3: Dịch Vụ Xác Minh Thanh Toán
 
-### Purpose
+### Mục Đích
 
-Tracks and verifies payment transactions. Records payments from contract, handles refunds, and generates revenue reports.
+Theo dõi và xác minh giao dịch thanh toán. Ghi lại thanh toán từ hợp đồng, xử lý hoàn lại tiền, và tạo báo cáo doanh thu.
 
-### Key Methods
+### Các Phương Thức Chính
 
-#### Record Payment
+#### Ghi Lại Thanh Toán
 
 ```bash
-# Programmatic only (used by event sync)
+# Chỉ lập trình (được sử dụng bởi event sync)
 ```
 
 ```typescript
-import { paymentVerificationService } from '../services/gymBackendServices';
+import { paymentVerificationService } from "../services/gymBackendServices";
 
 const paymentId = await paymentVerificationService.recordPaymentTransaction({
-  user_id: 'uuid-of-user',
-  transaction_type: 'membership_registration',
-  amount_wei: '500000000000000000', // 0.5 ETH
-  status: 'confirmed',
-  tx_hash: '0xabc...',
+  user_id: "uuid-of-user",
+  transaction_type: "membership_registration",
+  amount_wei: "500000000000000000", // 0.5 ETH
+  status: "confirmed",
+  tx_hash: "0xabc...",
   blockchain_timestamp: Math.floor(Date.now() / 1000),
-  metadata: { membership_type: 'STANDARD' }
+  metadata: { membership_type: "STANDARD" },
 });
 ```
 
-#### Get Payment by Hash
+#### Lấy Thanh Toán Theo Hash
 
 ```bash
 npm run payment:verify <tx_hash>
 ```
 
-#### Get Total Revenue
+#### Lấy Tổng Doanh Thu
 
 ```bash
 npm run payment:revenue
-# Output:
+# Đầu ra:
 # Total Revenue: 12500000000000000000 Wei (25 txs)
 ```
 
-#### Get Revenue Breakdown
+#### Lấy Phân Tích Doanh Thu
 
 ```bash
 npm run payment:by-type
-# Output: Table showing revenue per transaction type
+# Đầu ra: Bảng hiển thị doanh thu theo từng loại giao dịch
 ```
 
-#### Record Refund
+#### Ghi Lại Hoàn Lại Tiền
 
 ```typescript
 const refundId = await paymentVerificationService.recordRefund({
-  user_id: 'uuid-of-user',
-  refund_amount_wei: '500000000000000000',
-  reason: 'Member requested cancellation',
-  status: 'confirmed',
-  refund_tx_hash: '0xdef...' // Optional, hash of refund transaction
+  user_id: "uuid-of-user",
+  refund_amount_wei: "500000000000000000",
+  reason: "Hội viên yêu cầu hủy",
+  status: "confirmed",
+  refund_tx_hash: "0xdef...", // Tùy chọn, hash của giao dịch hoàn lại
 });
 ```
 
-#### Get Refunds for User
+#### Lấy Hoàn Lại Tiền Cho Người Dùng
 
 ```typescript
-const refunds = await paymentVerificationService.getUserRefunds('uuid-of-user');
+const refunds = await paymentVerificationService.getUserRefunds("uuid-of-user");
 ```
 
-#### Verify Pending Transactions
+#### Xác Minh Giao Dịch Chưa Hoàn Tất
 
 ```bash
 npm run payment:verify
-# Checks all pending transactions and updates status if confirmed/failed on-chain
+# Kiểm tra tất cả giao dịch chưa hoàn tất và cập nhật trạng thái nếu đã xác nhận/thất bại trên chuỗi
 ```
 
-### Payment Status Flow
+### Quy Trình Trạng Thái Thanh Toán
 
 ```
-pending → confirmed (when tx is mined and successful)
-       → failed     (when tx is reverted)
-       → refunded   (when refund is recorded)
+pending → confirmed (khi tx được khai thác và thành công)
+       → failed     (khi tx bị hoàn nguyên)
+       → refunded   (khi hoàn lại được ghi lại)
 ```
 
-## Backend API Example
+## Ví Dụ API Backend
 
-There's an example Express.js API in `examples/backendAPI.ts` that wraps these services with REST endpoints.
+Có một ví dụ API Express.js trong `examples/backendAPI.ts` bao bọc những dịch vụ này bằng các endpoint REST.
 
-### Running the API Server
+### Chạy Máy Chủ API
 
 ```bash
 npm install express cors body-parser
 npm run build
 npx ts-node examples/backendAPI.ts
 
-# Output:
+# Đầu ra:
 # 🚀 Gym Backend API running on http://localhost:3001
 ```
 
-### Available API Endpoints
+### Các Endpoint API Có Sẵn
 
-**Members:**
-- `GET /api/members` - List members
-- `GET /api/members/:walletAddress` - Get member
-- `POST /api/members/:walletAddress/update` - Update member
-- `GET /api/members/:walletAddress/attendance` - Get attendance
-- `GET /api/members/:walletAddress/payments` - Get payments
-- `GET /api/members/:walletAddress/is-expired` - Check expiration
+**Hội Viên:**
 
-**Payments:**
-- `GET /api/payments/:txHash` - Get payment
-- `GET /api/payments/user/:userId` - List user payments
-- `GET /api/payments/revenue` - Total revenue
-- `GET /api/payments/revenue/by-type` - Revenue breakdown
-- `POST /api/payments/record` - Record payment
-- `PUT /api/payments/:txHash/status` - Update status
-- `POST /api/payments/refund` - Record refund
+- `GET /api/members` - Liệt kê hội viên
+- `GET /api/members/:walletAddress` - Lấy hội viên
+- `POST /api/members/:walletAddress/update` - Cập nhật hội viên
+- `GET /api/members/:walletAddress/attendance` - Lấy điểm danh
+- `GET /api/members/:walletAddress/payments` - Lấy thanh toán
+- `GET /api/members/:walletAddress/is-expired` - Kiểm tra ngày hết hạn
 
-### Example API Calls
+**Thanh Toán:**
+
+- `GET /api/payments/:txHash` - Lấy thanh toán
+- `GET /api/payments/user/:userId` - Liệt kê thanh toán của người dùng
+- `GET /api/payments/revenue` - Tổng doanh thu
+- `GET /api/payments/revenue/by-type` - Phân tích doanh thu
+- `POST /api/payments/record` - Ghi lại thanh toán
+- `PUT /api/payments/:txHash/status` - Cập nhật trạng thái
+- `POST /api/payments/refund` - Ghi lại hoàn lại tiền
+
+### Ví Dụ Các Cuộc Gọi API
 
 ```bash
-# Get member profile
+# Lấy hồ sơ hội viên
 curl http://localhost:3001/api/members/0x123...
 
-# Get member attendance
+# Lấy lịch sử điểm danh
 curl http://localhost:3001/api/members/0x123.../attendance
 
-# Get total revenue
+# Lấy tổng doanh thu
 curl http://localhost:3001/api/payments/revenue
 
-# Update member
+# Cập nhật hội viên
 curl -X POST http://localhost:3001/api/members/0x123.../update \
   -H 'Content-Type: application/json' \
   -d '{"display_name":"John","email":"john@gym.com"}'
 ```
 
-## Data Flow Diagram
+## Sơ Đồ Luồng Dữ Liệu
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -312,10 +314,10 @@ curl -X POST http://localhost:3001/api/members/0x123.../update \
                                                           │
                                                           │
                     ┌─────────────────────────────────────┘
-                    │ Sign & Call Contract
+                    │ Ký & Gọi Hợp Đồng
                     ▼
         ┌─────────────────────────────┐
-        │  GymMembership Contract     │
+        │  Hợp Đồng GymMembership     │
         │  (Solidity)                 │
         ├─────────────────────────────┤
         │ registerMember()            │
@@ -324,14 +326,14 @@ curl -X POST http://localhost:3001/api/members/0x123.../update \
         │ withdrawRevenue()           │
         └─────────────┬───────────────┘
                       │
-                      │ Emit Events
+                      │ Phát Hành Sự Kiện
                       │
         ┌─────────────▼───────────────┐
         │  Event Listener             │
         │  (syncGymEvents.ts)         │
         └─────────────┬───────────────┘
                       │
-                      │ Parse & Sync
+                      │ Phân Tích & Đồng Bộ
                       │
         ┌─────────────▼────────────────────────────┐
         │  Supabase PostgreSQL                     │
@@ -340,13 +342,13 @@ curl -X POST http://localhost:3001/api/members/0x123.../update \
         │ gym_member_profiles                      │
         │ gym_attendance_records                   │
         │ gym_payment_transactions                 │
-        │ gym_refunds (for future)                 │
+        │ gym_refunds (cho tương lai)              │
         └─────────────┬────────────────────────────┘
                       │
-                      │ Query
+                      │ Truy Vấn
                       │
         ┌─────────────▼──────────────────┐
-        │  Backend Services              │
+        │  Dịch Vụ Backend               │
         ├────────────────────────────────┤
         │ gymMemberService               │
         │ paymentVerificationService     │
@@ -356,54 +358,54 @@ curl -X POST http://localhost:3001/api/members/0x123.../update \
                       │
         ┌─────────────▼──────────────────┐
         │  FE/BE Team (REST/GraphQL)     │
-        │  Display & Manage              │
+        │  Hiển Thị & Quản Lý            │
         └────────────────────────────────┘
 ```
 
-## Integration Checklist
+## Danh Sách Kiểm Tra Tích Hợp
 
-- [x] Event listener syncs contract to database
-- [x] Member CRUD (read, update, delete)
-- [x] Payment tracking and refunds
-- [x] Revenue reports
-- [ ] Express API example (for FE/BE team)
-- [ ] GraphQL option (if needed)
-- [ ] Authentication middleware (JWT/signature verification)
-- [ ] Rate limiting
-- [ ] Error handling & logging
+- [x] Event listener đồng bộ hợp đồng vào cơ sở dữ liệu
+- [x] CRUD thành viên (đọc, cập nhật, xóa)
+- [x] Theo dõi thanh toán và hoàn lại tiền
+- [x] Báo cáo doanh thu
+- [ ] Ví dụ Express API (cho FE/BE team)
+- [ ] Tùy chọn GraphQL (nếu cần)
+- [ ] Middleware xác thực (JWT/xác minh chữ ký)
+- [ ] Giới hạn tốc độ
+- [ ] Xử lý lỗi & ghi nhật ký
 
-## Troubleshooting
+## Khắc Phục Sự Cố
 
-### Event Listener Not Working
+### Event Listener Không Hoạt Động
 
-1. Check `.env` has correct `RPC_URL`
-2. Ensure contract address is correct in `deployment.json`
-3. Verify contract has correct event ABI in `syncGymEvents.ts`
+1. Kiểm tra `.env` có `RPC_URL` chính xác
+2. Đảm bảo địa chỉ hợp đồng chính xác trong `deployment.json`
+3. Xác minh hợp đồng có ABI sự kiện chính xác trong `syncGymEvents.ts`
 
-### Database Errors
+### Lỗi Cơ Sở Dữ Liệu
 
-1. Verify Supabase credentials in `.env`
-2. Ensure SQL schema is applied: `npm run db:init`
-3. Check RLS policies don't block service role key
+1. Xác minh thông tin xác thực Supabase trong `.env`
+2. Đảm bảo schema SQL được áp dụng: `npm run db:init`
+3. Kiểm tra các chính sách RLS không chặn khóa dịch vụ
 
-### Payment Not Recording
+### Thanh Toán Không Được Ghi Lại
 
-1. Ensure `gym_payment_transactions` table exists
-2. Check transaction was actually mined on blockchain
-3. Verify user exists in `app_users` table
+1. Đảm bảo bảng `gym_payment_transactions` tồn tại
+2. Kiểm tra giao dịch có thực sự được khai thác trên blockchain
+3. Xác minh người dùng tồn tại trong bảng `app_users`
 
-## Next Steps
+## Các Bước Tiếp Theo
 
-1. **Integrate with FE:** Use the example API to build React components
-2. **Add Auth:** Implement signature verification for secure endpoints
-3. **Add Caching:** Redis for frequently accessed data
-4. **Monitoring:** Set up logs and alerts for failed syncs
-5. **Testing:** Load test the API with multiple concurrent users
+1. **Tích Hợp với FE:** Sử dụng ví dụ API để xây dựng các thành phần React
+2. **Thêm Xác Thực:** Triển khai xác minh chữ ký cho các endpoint bảo mật
+3. **Thêm Bộ Nhớ Đệm:** Redis cho dữ liệu được truy cập thường xuyên
+4. **Giám Sát:** Thiết lập nhật ký và cảnh báo cho các đồng bộ thất bại
+5. **Kiểm Thử:** Kiểm thử tải API với nhiều người dùng đồng thời
 
-## References
+## Tham Khảo
 
-- [Supabase Documentation](https://supabase.com/docs)
-- [ethers.js Documentation](https://docs.ethers.org)
-- [Express.js Documentation](https://expressjs.com)
-- [GymMembership Contract](../contracts/GymMembership.sol)
-- [Database Schema](../sql/supabase_schema.sql)
+- [Tài Liệu Supabase](https://supabase.com/docs)
+- [Tài Liệu ethers.js](https://docs.ethers.org)
+- [Tài Liệu Express.js](https://expressjs.com)
+- [Hợp Đồng GymMembership](../contracts/GymMembership.sol)
+- [Schema Cơ Sở Dữ Liệu](../sql/supabase_schema.sql)
