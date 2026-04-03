@@ -6,10 +6,7 @@ import {
 import { expect } from "chai";
 import hre from "hardhat";
 
-describe("Lock", function () {
-  // We define a fixture to reuse the same setup in every test.
-  // We use loadFixture to run this setup once, snapshot that state,
-  // and reset Hardhat Network to that snapshot in every test.
+describe("Khóa (Lock)", function () {
   async function deployOneYearLockFixture() {
     const ONE_YEAR_IN_SECS = 365 * 24 * 60 * 60;
     const ONE_GWEI = 1_000_000_000;
@@ -26,20 +23,20 @@ describe("Lock", function () {
     return { lock, unlockTime, lockedAmount, owner, otherAccount };
   }
 
-  describe("Deployment", function () {
-    it("Should set the right unlockTime", async function () {
+  describe("Triển khai", function () {
+    it("Nên thiết lập thời gian mở khóa đúng", async function () {
       const { lock, unlockTime } = await loadFixture(deployOneYearLockFixture);
 
       expect(await lock.unlockTime()).to.equal(unlockTime);
     });
 
-    it("Should set the right owner", async function () {
+    it("Nên thiết lập chủ sở hữu đúng", async function () {
       const { lock, owner } = await loadFixture(deployOneYearLockFixture);
 
       expect(await lock.owner()).to.equal(owner.address);
     });
 
-    it("Should receive and store the funds to lock", async function () {
+    it("Nên nhận và lưu trữ quỹ để khóa", async function () {
       const { lock, lockedAmount } = await loadFixture(
         deployOneYearLockFixture,
       );
@@ -49,7 +46,7 @@ describe("Lock", function () {
       );
     });
 
-    it("Should fail if the unlockTime is not in the future", async function () {
+    it("Nên thất bại nếu thời gian mở khóa không ở tương lai", async function () {
       // We don't use the fixture here because we want a different deployment
       const latestTime = await time.latest();
       const Lock = await hre.ethers.getContractFactory("Lock");
@@ -59,9 +56,9 @@ describe("Lock", function () {
     });
   });
 
-  describe("Withdrawals", function () {
-    describe("Validations", function () {
-      it("Should revert with the right error if called too soon", async function () {
+  describe("Rút tiền", function () {
+    describe("Kiểm tra", function () {
+      it("Nên hoàn lại với lỗi đúng nếu gọi quá sớm", async function () {
         const { lock } = await loadFixture(deployOneYearLockFixture);
 
         await expect(lock.withdraw()).to.be.revertedWith(
@@ -69,7 +66,7 @@ describe("Lock", function () {
         );
       });
 
-      it("Should revert with the right error if called from another account", async function () {
+      it("Nên hoàn lại với lỗi đúng nếu gọi từ tài khoản khác", async function () {
         const { lock, unlockTime, otherAccount } = await loadFixture(
           deployOneYearLockFixture,
         );
@@ -83,7 +80,7 @@ describe("Lock", function () {
         );
       });
 
-      it("Shouldn't fail if the unlockTime has arrived and the owner calls it", async function () {
+      it("Không nên thất bại nếu thời gian mở khóa đã đến và chủ sở hữu gọi nó", async function () {
         const { lock, unlockTime } = await loadFixture(
           deployOneYearLockFixture,
         );
@@ -95,8 +92,8 @@ describe("Lock", function () {
       });
     });
 
-    describe("Events", function () {
-      it("Should emit an event on withdrawals", async function () {
+    describe("Sự kiện", function () {
+      it("Nên phát ra một sự kiện khi rút tiền", async function () {
         const { lock, unlockTime, lockedAmount } = await loadFixture(
           deployOneYearLockFixture,
         );
@@ -109,8 +106,8 @@ describe("Lock", function () {
       });
     });
 
-    describe("Transfers", function () {
-      it("Should transfer the funds to the owner", async function () {
+    describe("Chuyển tiền", function () {
+      it("Nên chuyển quỹ cho chủ sở hữu", async function () {
         const { lock, unlockTime, lockedAmount, owner } = await loadFixture(
           deployOneYearLockFixture,
         );

@@ -1,4 +1,5 @@
 import { ethers } from "hardhat";
+import { upsertCandidates, upsertElection } from "./_supabase";
 
 async function main() {
   const contractAddress = process.env.CONTRACT_ADDRESS;
@@ -43,6 +44,31 @@ async function main() {
   console.log("Block number:", receipt?.blockNumber);
 
   const count = await voting.getElectionCount();
+  const electionId = Number(count) - 1;
+  const [signer] = await ethers.getSigners();
+
+  await upsertElection({
+    id: electionId,
+    title,
+    creator_address: signer.address,
+    start_time: startTime,
+    end_time: endTime,
+    is_public: isPublic,
+    is_closed: false,
+    created_at: now,
+    closed_at: null,
+    tx_hash: tx.hash,
+  });
+
+  await upsertCandidates(
+    candidates.map((candidateName, candidateIndex) => ({
+      election_id: electionId,
+      candidate_index: candidateIndex,
+      candidate_name: candidateName,
+    })),
+  );
+
+  console.log("Da dong bo election vao Supabase");
   console.log("Tong so election hien tai:", count.toString());
 }
 

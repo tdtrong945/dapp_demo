@@ -1,4 +1,5 @@
 import { ethers } from "hardhat";
+import { closeElectionInSupabase } from "./_supabase";
 
 async function main() {
   const contractAddress = process.env.CONTRACT_ADDRESS;
@@ -16,8 +17,10 @@ async function main() {
 
   console.log("Tx hash:", tx.hash);
   await tx.wait();
+  await closeElectionInSupabase(electionId, tx.hash);
 
   console.log("Dong election thanh cong");
+  console.log("Da dong bo trang thai dong election vao Supabase");
 }
 
 main().catch((error) => {
