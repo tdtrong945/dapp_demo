@@ -254,3 +254,54 @@ values
   ('PRD-WATER', 'Bottled Water', 'product', 'Nuoc uong dong chai', '10000000000000000', true, '{"unit":"bottle"}'::jsonb),
   ('SRV-TOWEL', 'Towel Service', 'service', 'Dich vu thue khan', '5000000000000000', true, '{"unit":"visit"}'::jsonb)
 on conflict (service_code) do nothing;
+
+-- ==================== SQL HELPER FUNCTIONS ====================
+
+-- Increment total attendance count for a member
+create or replace function public.increment_attendance(p_user_id uuid)
+returns void
+language plpgsql
+security definer
+as $$
+begin
+  update public.gym_member_profiles
+  set total_attendance = total_attendance + 1,
+      updated_at = now()
+  where user_id = p_user_id;
+end;
+$$;
+
+-- Calculate total revenue from confirmed payments
+create or replace function public.calculate_total_revenue()
+returns table(total_wei text, confirmed_count bigint)
+language sql
+security definer
+stable
+as $$
+  select
+    coalesce(sum((amount_wei::numeric))::text, '0') as total_wei,
+    count(*) as confirmed_count
+  from public.gym_payment_transactions
+  where status = 'confirmed';
+$$;
+
+-- Get revenue breakdown by transaction type
+create or replace function public.get_revenue_by_type()
+returns table(
+  transaction_type text,
+  total_wei text,
+  count bigint
+)
+language sql
+security definer
+stable
+as $$
+  select
+    gpt.transaction_type,
+    coalesce(sum((gpt.amount_wei::numeric))::text, '0') as total_wei,
+    count(*) as count
+  from public.gym_payment_transactions gpt
+  where gpt.status = 'confirmed'
+  group by gpt.transaction_type
+  order by count desc;
+$$;

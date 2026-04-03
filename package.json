@@ -33,6 +33,14 @@
   "scripts": {
     "db:init": "ts-node scripts/initDatabase.ts",
     "db:reset": "node -e \"const fs=require('fs');const path=require('path');const p=process.env.DATABASE_PATH||'sql/dapp.sqlite';const resolved=path.resolve(process.cwd(),p);if(fs.existsSync(resolved)){fs.rmSync(resolved);console.log('Deleted',resolved);}else{console.log('No database file found at',resolved);}\" && npm run db:init",
-    "db:supabase:test": "ts-node scripts/testSupabaseConnection.ts"
+    "db:supabase:test": "ts-node scripts/testSupabaseConnection.ts",
+    "sync:gym-events": "ts-node scripts/syncGymEvents.ts",
+    "member:get": "ts-node scripts/gymMemberService.ts get",
+    "member:list": "ts-node scripts/gymMemberService.ts list",
+    "member:attendance": "ts-node scripts/gymMemberService.ts attendance",
+    "member:payments": "ts-node scripts/gymMemberService.ts payments",
+    "payment:verify": "ts-node scripts/paymentVerificationService.ts verify-pending",
+    "payment:revenue": "ts-node scripts/paymentVerificationService.ts revenue",
+    "payment:by-type": "ts-node scripts/paymentVerificationService.ts revenue-by-type"
   }
 }
